@@ -274,7 +274,7 @@ def receive(sock, end, msg_que):
 def handle_instr(end, cond, msg_que, vector, *args):
     """handle partners's instructions"""
     #playerGrp, enemiesGrp, pBulletsGrp, allSprites, grenadeGrp, bkgd = args
-    partnerGrp, enemiesGrp, pBulletsGrp, allSprites, grenadeGrp, bkgd = args
+    wall, platforms, partnerGrp, enemiesGrp, pBulletsGrp, allSprites, grenadeGrp, bkgd = args
 
     while not end.isSet():
         #print "280: handle_instr"
@@ -306,45 +306,59 @@ def handle_instr(end, cond, msg_que, vector, *args):
                                 #p.get_name() != player_name):
                             #print instr
                             #print "297: instr", instr
-                        vector[partner] += 1
-                        with cond:
-                            if not p.get_dying():                
-                                for key in instr:
-                                    if key == "move":
-                                        p.move(instr[key])
-                                    elif key == "jump":
-                                        p.jump()
-                                    elif key == "shoot":
-                                        if p.get_weapon():                     
-                                            pBulletsGrp.add(sprites.MGBullet(bkgd,p,p.shoot()))
-                                            allSprites.add(pBulletsGrp)
-                                        #shoot pistol    
-                                        elif p.shoot():
-                                            pBulletsGrp.add(sprites.PistolBullet(bkgd,p))
-                                            allSprites.add(pBulletsGrp)
-                                    elif key == "grenade":
-                                        if p.get_grenades():                      
-                                            p.throw_grenade()
-                                            grenadeGrp.add(sprites.Grenade(p))
-                                            allSprites.add(grenadeGrp)
-                                    elif key == "enemies":
-                                        for e in instr[key]:
-                                            #print "num", e
-                                            for i in enemiesGrp:
-                                                #print "pos_num", i.num
-                                                if e == i.num:
-                                                    i.die()
-                                                    break
-                                    elif key == "dead":
-                                        if p.get_health() >0:
-                                            print "335:", instr
-                                            p.die()
-                            partnerGrp.update()
-                            cond.notify()
-                        break
+                        if p.get_name() == partner:
+	                        vector[partner] += 1
+
+                        if not p.get_dying():
+                            for key in instr:
+                                if key == "move":
+                                    p.move(instr[key])
+                                elif key == "jump":
+                                    p.jump()
+                                elif key == "shoot":
+                                    if p.get_weapon():                     
+                                        pBulletsGrp.add(sprites.MGBullet(bkgd,p,p.shoot()))
+                                        allSprites.add(pBulletsGrp)
+                                    #shoot pistol    
+                                    elif p.shoot():
+                                        pBulletsGrp.add(sprites.PistolBullet(bkgd,p))
+                                        allSprites.add(pBulletsGrp)
+                                elif key == "grenade":
+                                    if p.get_grenades():                      
+                                        p.throw_grenade()
+                                        grenadeGrp.add(sprites.Grenade(p))
+                                        allSprites.add(grenadeGrp)
+                                elif key == "enemies":
+                                    for e in instr[key]:
+                                        #print "num", e
+                                        for i in enemiesGrp:
+                                            #print "pos_num", i.num
+                                            if e == i.num:
+                                                i.die()
+                                                break
+                                elif key == "dead":
+                                    if p.get_health() >0:
+                                        print "335:", instr
+                                        p.die()
+
+				        # #collision detection                
+				        # #collision with wall
+			         #    if pygame.sprite.collide_rect(p,wall):
+			         #        p.collide_wall(wall)    
+			         #    #collision with platforms    
+			         #    collision=pygame.sprite.spritecollide(p,platforms,False)           
+			         #    if collision:                              
+			         #        #finds lowest platform to land on
+			         #        p.land(max(platform.rect.top for platform in collision))               
+			         #    else:
+			         #        p.fall() 
+	           #      partnerGrp.update()
+	                with cond:
+	                	cond.notify()
+                  
 
 def host_action(clock, end, cond, sock, vector, *args):
-    player, grenadeGrp, allSprites, grenadeGrp, enemiesGrp, pBulletsGrp, bkgd = args
+    wall, platforms, player, grenadeGrp, allSprites, grenadeGrp, enemiesGrp, pBulletsGrp, bkgd = args
     while not end.isSet():
 
         #print "350: host_action"
@@ -423,7 +437,21 @@ def host_action(clock, end, cond, sock, vector, *args):
         except Exception:
             pass
 
-        player.update()
+        
+        # #collision detection                
+        
+        # #collision with wall
+        # if pygame.sprite.collide_rect(player,wall):
+        # 	player.collide_wall(wall)    
+        # #collision with platforms    
+        # collision=pygame.sprite.spritecollide(player,platforms,False)           
+        # if collision:                              
+        # 	#finds lowest platform to land on
+        # 	player.land(max(platform.rect.top for platform in collision))               
+        # else:
+        # 	player.fall() 
+
+        # player.update()
                 
         # REFRESH SCREEN
         with cond:
@@ -507,6 +535,8 @@ def level1(sock):
                                     cond,
                                     msg_que,
                                     vector,
+                                    wall,
+                                    platforms,
                                     partnerGrp,
                                     enemiesGrp,
                                     pBulletsGrp,
@@ -522,6 +552,8 @@ def level1(sock):
                                            cond,
                                            sock,
                                            vector,
+                                           wall,
+                                           platforms,
                                            player,
                                            grenadeGrp,
                                            allSprites,
@@ -599,6 +631,7 @@ def level1(sock):
             cond.wait()
             bkgd.image.blit(clean_bkgd,(0,0))
             allSprites.update(current_player)
+            playerGrp.update()
             #player.update()
             #partnerGrp.update()
             playerGrp.draw(bkgd.image)
