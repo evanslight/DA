@@ -267,6 +267,8 @@ def receive(sock, end, msg_que):
             instr = pickle.loads(data)
             if instr['player'] != player_name:
                 msg_que.put(instr)
+                data = {"player": player_name, "ack": "OK"}
+                sock.sendto(pickle.dumps(data), multicast_group)
         except socket.error:
            pass
                     #time.sleep(0.2)
@@ -432,6 +434,12 @@ def host_action(clock, end, cond, sock, vector, *args):
         try:
             if sock:
                 sock.sendto(actions, multicast_group)
+                while True:
+                    data, _ = sock.recvfrom()
+                    instr = pickle.loads(data)
+                    if "ack" in instr.keys():
+                        break
+                
         except Exception:
             pass
 
