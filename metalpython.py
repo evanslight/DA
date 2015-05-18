@@ -267,13 +267,11 @@ def receive(sock, end, msg_que):
             instr = pickle.loads(data)
             if instr['player'] != player_name:
                 msg_que.put(instr)
-                data = {"player": player_name, "ack": "OK"}
-                sock.sendto(pickle.dumps(data), multicast_group)
         except socket.error:
            pass
                     #time.sleep(0.2)
 
-def handle_instr(end, cond, msg_que, vector, *args):
+def handle_instr(sock, end, cond, msg_que, vector, *args):
     """handle partners's instructions"""
     #playerGrp, enemiesGrp, pBulletsGrp, allSprites, grenadeGrp, bkgd = args
     wall, platforms, partnerGrp, enemiesGrp, pBulletsGrp, allSprites, grenadeGrp, bkgd = args
@@ -303,6 +301,8 @@ def handle_instr(end, cond, msg_que, vector, *args):
                 if (vectorJ[partner] == vector[partner] + 1 and
                         count == players_amount):
                     #print "293: In"
+                    data = {"player": player_name, "ack": "OK"}
+                    sock.sendto(pickle.dumps(data), multicast_group)
                     for p in partnerGrp:
                             #print instr
                             #print "297: instr", instr
@@ -537,7 +537,8 @@ def level1(sock):
                                     ))
     # Partners' action-handling thread
     handle = threading.Thread(target=handle_instr,
-                              args=(end,
+                              args=(sock,
+                                    end,
                                     cond,
                                     msg_que,
                                     vector,
