@@ -47,7 +47,7 @@ def main():
     # configure socket settings
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # set ttl
-    ttl = struct.pack('b', 1)
+    ttl = struct.pack('b', 30)
     sock.setsockopt(socket.IPPROTO_IP,
                     socket.IP_MULTICAST_TTL,
                     ttl)
@@ -296,8 +296,8 @@ def handle_instr(end, cond, msg_que, vector, *args):
                            key != partner):
                         count += 1
                 #print "290: count", count
-                #print "291: vectorJ", vectorJ
-                #print "292: vector", vector
+                print "291: vectorJ", vectorJ
+                print "292: vector", vector
                 if (vectorJ[partner] == vector[partner] + 1 and
                         count == players_amount):
                     #print "293: In"
@@ -362,7 +362,7 @@ def host_action(clock, end, cond, sock, vector, *args):
         #print "350: host_action"
         end.wait(0)
         # clock
-        clock.tick(30)
+        clock.tick(15)
         actions = {"player": player_name};
         for event in pygame.event.get():
             if not player.get_dying():
