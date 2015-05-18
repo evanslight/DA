@@ -319,6 +319,9 @@ class Player(pygame.sprite.Sprite):
         '''returns the current weapon'''
         return self.__weapon
     
+    def die(self):
+        """play dies"""
+        self.__health -= self.__health
     def get_dying(self):
         '''returns whether the player is in the death animation'''
         if self.__dead:

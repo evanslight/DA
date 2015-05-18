@@ -14,6 +14,7 @@ import socket
 import struct
 import threading
 import Queue
+import time
 try:
     import cPickle as pickle
 except:
@@ -46,7 +47,7 @@ def main():
     # configure socket settings
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # set ttl
-    ttl = struct.pack('b', 2)
+    ttl = struct.pack('b', 1)
     sock.setsockopt(socket.IPPROTO_IP,
                     socket.IP_MULTICAST_TTL,
                     ttl)
@@ -67,6 +68,7 @@ def main():
 
     while keepGoing:
         status1=title_screen(sock)
+        time.sleep(1)
         if status1==0:
             status2=level1(sock)
             if status2[0]==0:
@@ -205,7 +207,7 @@ def title_screen(sock):
                     #print "204: players", msg
 
                     # add a player to player's group
-                    if msg["status"]:
+                    if "status" in msg.keys():
                         player = msg["player"]
                         if player not in players:
                             players.append(player)
@@ -252,32 +254,35 @@ def title_screen(sock):
         
     return exitstatus
 
-def receive(sock, msg_que):
+def receive(sock, end, msg_que):
     '''receive messages from other players'''
 
-    while True:
+    while not end.isSet():
         # other players' actions
+        #print "262: receive"
         try:
+            end.wait(0)
             # get other players' actions
-            if sock:
-                data, _ = sock.recvfrom(2048)
-                instr = pickle.loads(data)
-                if instr['player'] != player_name:
-                    msg_que.put(instr)
-            else:
-                break
+            data, _ = sock.recvfrom(2048)
+            instr = pickle.loads(data)
+            if instr['player'] != player_name:
+                msg_que.put(instr)
         except socket.error:
            pass
                     #time.sleep(0.2)
 
-def handle_instr(sock, cond, msg_que, vector, *args):
+def handle_instr(end, cond, msg_que, vector, *args):
     """handle partners's instructions"""
-    playerGrp, enemiesGrp, pBulletsGrp, allSprites, grenadeGrp, bkgd = args
+    #playerGrp, enemiesGrp, pBulletsGrp, allSprites, grenadeGrp, bkgd = args
+    partnerGrp, enemiesGrp, pBulletsGrp, allSprites, grenadeGrp, bkgd = args
 
-    while True:
-        if sock:
-            if not msg_que.empty():
-                instr = msg_que.get()
+    while not end.isSet():
+        #print "280: handle_instr"
+        end.wait(0)
+
+        if not msg_que.empty():
+            instr = msg_que.get()
+            if "vector" in instr.keys():
                 #print "279: instr", instr
                 vectorJ = instr['vector']
                 partner = instr['player']
@@ -295,325 +300,60 @@ def handle_instr(sock, cond, msg_que, vector, *args):
                 if (vectorJ[partner] == vector[partner] + 1 and
                         count == players_amount):
                     #print "293: In"
-                    for p in playerGrp:
+                    for p in partnerGrp:
                         #print "actions_oth: ", actions_oth
-                        if (partner == p.get_name() and
-                                p.get_name() != player_name):
+                        #if (partner == p.get_name() and
+                                #p.get_name() != player_name):
                             #print instr
                             #print "297: instr", instr
-                            vector[partner] += 1
-                            with cond:
-                                if not p.get_dying():                
-                                    for key in instr:
-                                        if key == "move":
-                                            p.move(instr[key])
-                                        elif key == "jump":
-                                            p.jump()
-                                        elif key == "shoot":
-                                            if p.get_weapon():                     
-                                                pBulletsGrp.add(sprites.MGBullet(bkgd,p,p.shoot()))
-                                                allSprites.add(pBulletsGrp)
-                                            #shoot pistol    
-                                            elif p.shoot():
-                                                pBulletsGrp.add(sprites.PistolBullet(bkgd,p))
-                                                allSprites.add(pBulletsGrp)
-                                        elif key == "grenade":
-                                            if p.get_grenades():                      
-                                                p.throw_grenade()
-                                                grenadeGrp.add(sprites.Grenade(p))
-                                                allSprites.add(grenadeGrp)
-                                        elif key == "enemies":
-                                            for e in instr[key]:
-                                                #print "num", e
-                                                for i in enemiesGrp:
-                                                    #print "pos_num", i.num
-                                                    if e == i.num:
-                                                        i.die()
-                                                        break
-                                cond.notify()
-                            break
-        else:
-            break
+                        vector[partner] += 1
+                        with cond:
+                            if not p.get_dying():                
+                                for key in instr:
+                                    if key == "move":
+                                        p.move(instr[key])
+                                    elif key == "jump":
+                                        p.jump()
+                                    elif key == "shoot":
+                                        if p.get_weapon():                     
+                                            pBulletsGrp.add(sprites.MGBullet(bkgd,p,p.shoot()))
+                                            allSprites.add(pBulletsGrp)
+                                        #shoot pistol    
+                                        elif p.shoot():
+                                            pBulletsGrp.add(sprites.PistolBullet(bkgd,p))
+                                            allSprites.add(pBulletsGrp)
+                                    elif key == "grenade":
+                                        if p.get_grenades():                      
+                                            p.throw_grenade()
+                                            grenadeGrp.add(sprites.Grenade(p))
+                                            allSprites.add(grenadeGrp)
+                                    elif key == "enemies":
+                                        for e in instr[key]:
+                                            #print "num", e
+                                            for i in enemiesGrp:
+                                                #print "pos_num", i.num
+                                                if e == i.num:
+                                                    i.die()
+                                                    break
+                                    elif key == "dead":
+                                        if p.get_health() >0:
+                                            print "335:", instr
+                                            p.die()
+                            partnerGrp.update()
+                            cond.notify()
+                        break
 
+def host_action(clock, end, cond, sock, vector, *args):
+    player, grenadeGrp, allSprites, grenadeGrp, enemiesGrp, pBulletsGrp, bkgd = args
+    while not end.isSet():
 
-def repaint(cond, msg_que, *args):
-    """update all items and repaint them"""
-    playerGrp, enemiesGrp, eBulletsGrp, wall, platforms, grenadeGrp, bkgd, clean_bkgd, allSprites, screen, scoreboard, current_player = args
-    while True:
-
-        with cond:
-            cond.wait()
-            #collision detection                
-            #for item in (player,tank):
-            for item in playerGrp:
-                #collision with wall
-                if pygame.sprite.collide_rect(item,wall):
-                    item.collide_wall(wall)    
-                #collision with platforms    
-                collision=pygame.sprite.spritecollide(item,platforms,False)           
-                if collision:                              
-                    #finds lowest platform to land on
-                    item.land(max(platform.rect.top for platform in collision))               
-                else:
-                    item.fall() 
-            
-            #bullet collision with players
-            #for bullet in pygame.sprite.spritecollide(current_player,eBulletsGrp,False):            
-            for p, bullet in pygame.sprite.groupcollide(playerGrp,eBulletsGrp,False,False).iteritems():            
-                if not p.get_dying():
-                    for b in bullet:
-                        b.kill()
-                        p.hurt(20)
-                        #actions["hurt"] = 20
-                        #p.hurt(20)
-                
-            ##grenade collision with platforms
-            for grenade,platform in pygame.sprite.groupcollide(grenadeGrp,platforms,False,False).iteritems():            
-                if platform:
-                    grenade.explode()                
-                
-            #enemy shooting
-            for enemy in enemiesGrp:
-                if enemy.get_shooting():
-                    eBulletsGrp.add(sprites.EnemyBullet(enemy,current_player))
-                    allSprites.add(eBulletsGrp) 
-            
-            ##kills tank, respawns player
-            #if tank.get_dying():
-                #player.respawn(tank)
-                #playerGrp.add(player)
-                #allSprites.add(playerGrp)
-                #current_player=player
-                
-            ##exits game loop once player death animation is over                
-            #if player.get_dying()==2:            
-                #keepGoing=False
-                #exitstatus=1
-           
-
-
-
-            #checks if player completed level    
-            #if current_player.rect.right>=bkgd.image.get_width():
-                #keepGoing=False
-                #exitstatus=0
-            # REFRESH SCREEN 
-            #draws allSprites on background 
-            bkgd.image.blit(clean_bkgd,(0,0))
-            allSprites.update(current_player)
-            allSprites.draw(bkgd.image)
-            
-            
-            try:
-                #updates background position
-                bkgd.update(current_player)
-                screen.blit(bkgd.image,bkgd.rect)
-                
-                #updates scoreboard onto screen
-                scoreboard.update(current_player)
-                screen.blit(scoreboard.image,scoreboard.rect)
-                
-                pygame.display.flip()
-
-            except Exception:
-               break
-
-
-def level1(sock):
-    '''main game'''    
-
-    # ENTITIES   
-    #     players
-    print "308: players", players
-    vector = {p: 0 for p in players}
-    print "310: ", vector
-    player = sprites.Player(player_name)
-    current_player = player
-    playerGrp = pygame.sprite.Group(player)
-    for p in players[1:]:
-        playerGrp.add(sprites.Player(p))
-
-    #player=sprites.Player(player_name)
-    #player1 = sprites.Player("test")
-    #tank=sprites.Tank()
-    #playerGrp=pygame.sprite.Group(tank,player, player1)
-    #current_player=player
-    
-    #     background
-    clean_bkgd=pygame.image.load('images/bkgd.png').convert()
-    bkgd=sprites.Background(player)     
-       
-    #     map objects    
-    wall=sprites.Platform(((1438,380),(1,100)))
-    #wall=sprites.Platform(((438,180),(1,500)))
-    platforms=pygame.sprite.Group([sprites.Platform(dimension) for dimension in (((0,366),(1400,1)),((1438,450),(2507,1)),((1845,342),(110,1)),((2032,260),(348,1)),((2380,342),(130,1)),((2510,260),(290,1)),((2915,260),(345,1)),((3260,342),(150,1)))])
-    #     projectiles
-    pBulletsGrp=pygame.sprite.Group()   
-    eBulletsGrp=pygame.sprite.Group()   
-    grenadeGrp=pygame.sprite.Group()
-    
-    #     scoreboard
-    #scoreboard=sprites.ScoreBoard(player,tank)
-    scoreboard=sprites.ScoreBoard(player)
-    
-    #     enemies
-    #enemies =((500,366),(800,366),(1000,366),(1100,366),(1200,366),(1300,366),(1700,450),(1800,450),(1900,450),(2300,450),(2400,450),(2500,450),(2600,450),(2700,450),(2800,450),(2900,450),(3000,450),(3100,450),(3200,450),(3400,450),(3500,450),(3600,450),(3800,450),(1880,342),(2040,260),(2200,260),(2400,342),(2550,260),(2700,260),(2950,260),(3100,260),(3280,342))
-    enemies = ((500,366),(800,366),(1000,366),(1100,366))
-    #enemies = ()
-    enemiesGrp=pygame.sprite.Group([sprites.Enemy(midbottom,i) for i, midbottom in enumerate(enemies)])
-    print "enemies", len(enemiesGrp)
-    
-    #     sound
-    pygame.mixer.music.load('sounds/music.mp3')
-    pygame.mixer.music.play(-1)
-    
-    allSprites=pygame.sprite.OrderedUpdates(enemiesGrp,playerGrp,eBulletsGrp,pBulletsGrp,grenadeGrp)   
-    
-    #ASSIGN
-    clock=pygame.time.Clock() 
-    keepGoing=True
-    pygame.mouse.set_visible(False)
-
-    # Message queue
-    msg_que = Queue.Queue()
-
-    cond = threading.Condition()
-    partners = threading.Thread(target=receive,
-                              args=(sock,
-                                    msg_que,
-                                    ))
-    handle = threading.Thread(target=handle_instr,
-                              args=(sock,
-                                    cond,
-                                    msg_que,
-                                    vector,
-                                    playerGrp,
-                                    enemiesGrp,
-                                    pBulletsGrp,
-                                    allSprites,
-                                    grenadeGrp,
-                                    bkgd
-                                    ))
-
-    updates = threading.Thread(target=repaint,
-                               args=(cond,
-                                     msg_que,
-                                     playerGrp,
-                                     enemiesGrp,
-                                     eBulletsGrp,
-                                     wall,
-                                     platforms,
-                                     grenadeGrp,
-                                     bkgd,
-                                     clean_bkgd,
-                                     allSprites,
-                                     screen,
-                                     scoreboard,
-                                     current_player))
-
-    sock.settimeout(None)
-    partners.start()
-    handle.start()
-    updates.start()
-    #LOOP
-    while keepGoing:
-        # TIME
+        #print "350: host_action"
+        end.wait(0)
+        # clock
         clock.tick(30)     
-        
-        # EVENT HANDLING        
-        #for event in pygame.event.get():              
-            #if event.type==pygame.QUIT:                
-                #if sock:
-                    #sock.close()
-                #keepGoing=False
-                #exitstatus=2
-            #if not current_player.get_dying():
-                #if event.type==pygame.KEYDOWN:                    
-                    #if event.key==pygame.K_e:
-                        ##enter tank
-                        #if (pygame.sprite.collide_rect(player,tank) and
-                                #current_player==player and
-                                    #not tank.get_dying() and
-                                        #not tank.get_occupation()):
-                            #current_player=tank
-                            #tank.set_occupation()
-                            #actions["tank"] = True
-                            #player.kill()
-                        ##exit tank
-                        #elif current_player==tank:                        
-                            #player.respawn(tank)
-                            #playerGrp.add(player)
-                            #allSprites.add(playerGrp)
-                            #current_player=player
-                            #tank.die()
-                            #actions["tank"] = False
-                    #elif event.key==pygame.K_l:
-                        ##fire cannon
-                        #if current_player==tank:
-                            #if tank.shoot_cannon():
-                                #actions["cannon"] = True
-                                #grenadeGrp.add(sprites.TankShell(tank))                        
-                                #allSprites.add(grenadeGrp)
-                        ##throw grenade
-                        #elif player.get_grenades():                      
-                            #actions["grenade"] = True
-                            #player.throw_grenade()
-                            #grenadeGrp.add(sprites.Grenade(player))                        
-                            #allSprites.add(grenadeGrp)                                          
-                        
-        #if not current_player.get_dying():                
-            #keys_pressed=pygame.key.get_pressed()      
-
-            ##left and right movement        
-            #if keys_pressed[pygame.K_d] and keys_pressed[pygame.K_a]:
-                #pass
-            #elif keys_pressed[pygame.K_a]:
-                #current_player.move(-1)
-                #actions["move"] = -1
-            #elif keys_pressed[pygame.K_d]:
-                #current_player.move(1)
-                #actions["move"] = 1
-            ##jump       
-            #if keys_pressed[pygame.K_j]:
-                    #current_player.jump()
-                    #actions["jump"] = True
-                    
-            ##tank controls       
-            #if current_player==tank:          
-                ##shoot mg
-                #if keys_pressed[pygame.K_k]:
-                    #tank.shoot_mg()
-                    #pBulletsGrp.add(sprites.TankBullet(bkgd,tank))
-                    #allSprites.add(pBulletsGrp)              
-                ##rotate mg    
-                #if keys_pressed[pygame.K_w] and keys_pressed[pygame.K_s]:
-                    #pass
-                #elif keys_pressed[pygame.K_w]:
-                    #tank.rotate(5)
-                #elif keys_pressed[pygame.K_s]:
-                    #tank.rotate(-5)
-            ##player control        
-            #else:             
-                #if keys_pressed[pygame.K_k]:
-                    ##shoot mg
-                    #actions["shoot"] = True
-                    #if player.get_weapon():                     
-                        #pBulletsGrp.add(sprites.MGBullet(bkgd,player,player.shoot()))                        
-                        #allSprites.add(pBulletsGrp)
-                    ##shoot pistol    
-                    #elif player.shoot():
-                        #pBulletsGrp.add(sprites.PistolBullet(bkgd,player))
-                        #allSprites.add(pBulletsGrp)
-
         actions = {"player": player_name};
         for event in pygame.event.get():              
-            if event.type==pygame.QUIT:                
-                if sock:
-                    sock.close()
-                    sock = None
-                keepGoing=False
-                exitstatus=2
-            if not current_player.get_dying():
+            if not player.get_dying():
                 if event.type==pygame.KEYDOWN:
                     if event.key==pygame.K_l:
                         if player.get_grenades():
@@ -651,10 +391,6 @@ def level1(sock):
 
         # enemies status
         actions.setdefault("enemies", [])
-        ##tank collision with enemies
-        #for enemy in pygame.sprite.spritecollide(tank,enemiesGrp,False):            
-            #enemy.die()
-            #actions["enemies"].append(enemy.num)
             
         #bullet collision with enemies
         for bullet,enemy in pygame.sprite.groupcollide(pBulletsGrp,enemiesGrp,False,False).iteritems():            
@@ -671,144 +407,215 @@ def level1(sock):
                     i.die()                        
                     actions["enemies"].append(i.num)
 
+        # peopls is dead
+        if player.get_health() <= 0:
+            actions["dead"] = True
+            #print "410: ", actions
+
+
         vector[player_name] += 1
         actions['vector'] = vector
         actions = pickle.dumps(actions)
-        if sock:
-            sock.sendto(actions, multicast_group)
 
+        try:
+            if sock:
+                sock.sendto(actions, multicast_group)
+        except Exception:
+            pass
 
-                    #elif key == "enemies":
-                        #for e in actions_oth[key]:
-                            #print "num", e
-                            #for i in enemiesGrp:
-                                #print "pos_num", i.num
-                                #if e == i.num:
-                                    #i.die()
-                                    #break
-                    #elif key == "hurt":
-                        #player1.hurt(actions_oth[key])
-                    #elif key == "grenade":
-                        #player1.throw_grenade()
-                        #grenadeGrp.add(sprites.Grenade(player1))                        
-                        #allSprites.add(grenadeGrp)                                          
-                    #elif key == "tank":
-                        #if actions[key]:
-                            #tank.set_occupation()
-                            #player1.kill()
-                            #player1 = tank
-                        ##exit tank
-                        #else:
-                            #player.respawn(tank)
-                            #playerGrp.add(player)
-                            #allSprites.add(playerGrp)
-                            #current_player=player
-                            #tank.die()
-                            #actions["tank"] = False
-
-                    #elif event.key==pygame.K_l:
-                        ##fire cannon
-                        #if current_player==tank:
-                            #if tank.shoot_cannon():
-                                #actions["cannon"] = True
-                                #grenadeGrp.add(sprites.TankShell(tank))                        
-                                #allSprites.add(grenadeGrp)
-
-
-        ##collision detection                
-        ##for item in (player,tank):
-        #for item in playerGrp:
-            ##collision with wall
-            #if pygame.sprite.collide_rect(item,wall):
-                #item.collide_wall(wall)    
-            ##collision with platforms    
-            #collision=pygame.sprite.spritecollide(item,platforms,False)           
-            #if collision:                              
-                ##finds lowest platform to land on
-                #item.land(max(platform.rect.top for platform in collision))               
-            #else:
-                #item.fall() 
-            
-        ##bullet collision with players
-        #for bullet in pygame.sprite.spritecollide(current_player,eBulletsGrp,False):            
-        ##for p, bullet in pygame.sprite.groupcollide(playerGrp,eBulletsGrp,False,False).iteritems():            
-            #if not current_player.get_dying():
-                #for b in bullet:
-                    #b.kill()
-                    #current_player.hurt(20)
-                    #actions["hurt"] = 20
-                    ##p.hurt(20)
-            
-        #actions.setdefault("enemies", [])
-        ##tank collision with enemies
-        #for enemy in pygame.sprite.spritecollide(tank,enemiesGrp,False):            
-            #enemy.die()
-            #actions["enemies"].append(enemy.num)
-            
-        ##bullet collision with enemies
-        #for bullet,enemy in pygame.sprite.groupcollide(pBulletsGrp,enemiesGrp,False,False).iteritems():            
-            #if enemy and not enemy[0].get_dying():
-                #bullet.kill()
-                #enemy[0].die()               
-                #actions["enemies"].append(enemy[0].num)
+        player.update()
                 
-        ##grenade collision with enemies
-        #for grenade,enemy in pygame.sprite.groupcollide(grenadeGrp,enemiesGrp,False,True).iteritems():            
-            #if enemy:
-                #grenade.explode()
-                #for i in enemy:
-                    #i.die()                        
-                    #actions["enemies"].append(i.num)
-                    
-        ##grenade collision with platforms
-        #for grenade,platform in pygame.sprite.groupcollide(grenadeGrp,platforms,False,False).iteritems():            
-            #if platform:
-                #grenade.explode()                
-                
-        ##enemy shooting
-        #for enemy in enemiesGrp:
-            #if enemy.get_shooting():
-                #eBulletsGrp.add(sprites.EnemyBullet(enemy,current_player))
-                #allSprites.add(eBulletsGrp) 
-        
-        ##kills tank, respawns player
-        #if tank.get_dying():
-            #player.respawn(tank)
-            #playerGrp.add(player)
-            #allSprites.add(playerGrp)
-            #current_player=player
-            
-        ##exits game loop once player death animation is over                
-        #if player.get_dying()==2:            
-            #keepGoing=False
-            #exitstatus=1
+        # REFRESH SCREEN
+        with cond:
+            cond.notify()
+
+def level1(sock):
+    '''main game'''    
+
+    # ENTITIES   
+    #     players
+    #print "308: players", players
+    vector = {p: 0 for p in players}
+    #print "310: ", vector
+    player = sprites.Player(player_name)
+    current_player = player
+    playerGrp = pygame.sprite.Group(player)
+    partnerGrp = pygame.sprite.Group()
+    for p in players[1:]:
+        p = sprites.Player(p)
+        playerGrp.add(p)
+        partnerGrp.add(p)
+
+    #player=sprites.Player(player_name)
+    #player1 = sprites.Player("test")
+    #tank=sprites.Tank()
+    #playerGrp=pygame.sprite.Group(tank,player, player1)
+    #current_player=player
+    
+    #     background
+    clean_bkgd=pygame.image.load('images/bkgd.png').convert()
+    bkgd=sprites.Background(player)     
        
+    #     map objects    
+    wall=sprites.Platform(((1438,380),(1,100)))
+    #wall=sprites.Platform(((438,180),(1,500)))
+    platforms=pygame.sprite.Group([sprites.Platform(dimension) for dimension in (((0,366),(1400,1)),((1438,450),(2507,1)),((1845,342),(110,1)),((2032,260),(348,1)),((2380,342),(130,1)),((2510,260),(290,1)),((2915,260),(345,1)),((3260,342),(150,1)))])
+    #     projectiles
+    pBulletsGrp=pygame.sprite.Group()   
+    eBulletsGrp=pygame.sprite.Group()   
+    grenadeGrp=pygame.sprite.Group()
+    
+    #     scoreboard
+    #scoreboard=sprites.ScoreBoard(player,tank)
+    scoreboard=sprites.ScoreBoard(player)
+    
+    #     enemies
+    enemies =((500,366),(800,366),(1000,366),(1100,366),(1200,366),(1300,366),(1700,450),(1800,450),(1900,450),(2300,450),(2400,450),(2500,450),(2600,450),(2700,450),(2800,450),(2900,450),(3000,450),(3100,450),(3200,450),(3400,450),(3500,450),(3600,450),(3800,450),(1880,342),(2040,260),(2200,260),(2400,342),(2550,260),(2700,260),(2950,260),(3100,260),(3280,342))
+    #enemies = ((500,366),(800,366),(1000,366),(1100,366))
+    #enemies = ()
+    enemiesGrp=pygame.sprite.Group([sprites.Enemy(midbottom,i) for i, midbottom in enumerate(enemies)])
+    #print "enemies", len(enemiesGrp)
+    
+    #     sound
+    pygame.mixer.music.load('sounds/music.mp3')
+    pygame.mixer.music.play(-1)
+    
+    #allSprites=pygame.sprite.OrderedUpdates(enemiesGrp,playerGrp,eBulletsGrp,pBulletsGrp,grenadeGrp)   
+    allSprites=pygame.sprite.OrderedUpdates(enemiesGrp,eBulletsGrp,pBulletsGrp,grenadeGrp)   
+    
+    #ASSIGN
+    clock=pygame.time.Clock() 
+    keepGoing=True
+    pygame.mouse.set_visible(False)
+
+    # Message queue
+    msg_que = Queue.Queue()
+
+    cond = threading.Condition()
+    end = threading.Event()
+    #lock = threading.Lock()
+
+    # Partners' thread
+    partners = threading.Thread(target=receive,
+                              args=(sock,
+                                    end,
+                                    msg_que,
+                                    ))
+    # Partners' action-handling thread
+    handle = threading.Thread(target=handle_instr,
+                              args=(end,
+                                    cond,
+                                    msg_que,
+                                    vector,
+                                    partnerGrp,
+                                    enemiesGrp,
+                                    pBulletsGrp,
+                                    allSprites,
+                                    grenadeGrp,
+                                    bkgd
+                                    ))
+
+    # host's actions
+    player_action = threading.Thread(target=host_action,
+                                     args=(clock,
+                                           end,
+                                           cond,
+                                           sock,
+                                           vector,
+                                           player,
+                                           grenadeGrp,
+                                           allSprites,
+                                           grenadeGrp,
+                                           enemiesGrp,
+                                           pBulletsGrp,
+                                           bkgd))
+
+    sock.settimeout(None)
+    partners.start()
+    handle.start()
+    player_action.start()
+    #updates.start()
+    #LOOP
+    while keepGoing:
+        # TIME
+        #clock.tick(30)     
+        for event in pygame.event.get():              
+            if event.type==pygame.QUIT:                
+                #if sock:
+                sock.close()
+                sock = None
+                end.set()
+                keepGoing=False
+                exitstatus=2
 
 
-
-        ##checks if player completed level    
+        #collision detection                
+        for item in playerGrp:
+        #collision with wall
+            if pygame.sprite.collide_rect(item,wall):
+                item.collide_wall(wall)    
+            #collision with platforms    
+            collision=pygame.sprite.spritecollide(item,platforms,False)           
+            if collision:                              
+                #finds lowest platform to land on
+                item.land(max(platform.rect.top for platform in collision))               
+            else:
+                item.fall() 
+        
+        #bullet collision with players
+        #for bullet in pygame.sprite.spritecollide(current_player,eBulletsGrp,False):            
+        for p, bullet in pygame.sprite.groupcollide(playerGrp,eBulletsGrp,False,False).iteritems():            
+            if not p.get_dying():
+                for b in bullet:
+                    b.kill()
+                    p.hurt(20)
+                    #actions["hurt"] = 20
+                    #p.hurt(20)
+            
+        ##grenade collision with platforms
+        for grenade,platform in pygame.sprite.groupcollide(grenadeGrp,platforms,False,False).iteritems():            
+            if platform:
+                grenade.explode()                
+            
+        #enemy shooting
+        for enemy in enemiesGrp:
+            if enemy.get_shooting():
+                eBulletsGrp.add(sprites.EnemyBullet(enemy,current_player))
+                allSprites.add(eBulletsGrp) 
+        
+        #exits game loop once player death animation is over
+        if player.get_dying()==2:            
+            end.set()
+            keepGoing=False
+            exitstatus=1
+       
+        #checks if player completed level    
         #if current_player.rect.right>=bkgd.image.get_width():
             #keepGoing=False
             #exitstatus=0
-            
+        # REFRESH SCREEN 
+        #draws allSprites on background 
         with cond:
-            cond.notify()
-        ## REFRESH SCREEN 
-        ##draws allSprites on background 
-        #bkgd.image.blit(clean_bkgd,(0,0))
-        #allSprites.update(current_player)
-        #allSprites.draw(bkgd.image)
-        
-        
-        ##updates background position
-        #bkgd.update(current_player)
-        #screen.blit(bkgd.image,bkgd.rect)
-        
-        ##updates scoreboard onto screen
-        #scoreboard.update(current_player)
-        #screen.blit(scoreboard.image,scoreboard.rect)
-        
-        #pygame.display.flip()
+            cond.wait()
+            bkgd.image.blit(clean_bkgd,(0,0))
+            allSprites.update(current_player)
+            #player.update()
+            #partnerGrp.update()
+            playerGrp.draw(bkgd.image)
+            try:
+                allSprites.draw(bkgd.image)
+            except Exception:
+                pass
+            
+            #updates background position
+            bkgd.update(current_player)
+            screen.blit(bkgd.image,bkgd.rect)
+            
+            #updates scoreboard onto screen
+            scoreboard.update(current_player)
+            screen.blit(scoreboard.image,scoreboard.rect)
+            
+            pygame.display.flip()
         
     pygame.mixer.music.stop()
     #if tank.get_dying():
