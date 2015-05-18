@@ -28,14 +28,24 @@ pygame.display.set_caption("Metal Python")
 
 # parse argument
 parser = optparse.OptionParser()
-parser.add_option("-p", action="store", default="master")
+parser.add_option("-n", action="store", default="master")
+parser.add_option("-h", action="store", default="localhost")
+parser.add_option("-p", action="store", type="int", default=5678)
 options, args = parser.parse_args()
-player_name = options.p
+player_name = options.n
+remote_host = options.h
+remote_port = options.p
+host_addr = ("", remote_port)
+frame = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+frame.bind(host_addr)
 
 # multicast
 multicast = "224.3.29.71"
 multicast_group = (multicast, 5678)
 host = ("", 5678)
+
+# other's address
+other = (remote_host, remote_port)
 
 # players group
 players = [player_name,]
@@ -263,7 +273,8 @@ def receive(sock, end, msg_que):
         try:
             end.wait(0)
             # get other players' actions
-            data, _ = sock.recvfrom(2048)
+            #data, _ = sock.recvfrom(2048)
+            data, _ = frame.recvfrom(2048)
             instr = pickle.loads(data)
             if instr['player'] != player_name:
                 msg_que.put(instr)
@@ -302,7 +313,8 @@ def handle_instr(sock, end, cond, msg_que, vector, *args):
                         count == players_amount):
                     #print "293: In"
                     data = {"player": player_name, "ack": "OK"}
-                    sock.sendto(pickle.dumps(data), multicast_group)
+                    frame.sendto(pickle.dumps(data),
+                                (remote_host, remote_port))
                     for p in partnerGrp:
                             #print instr
                             #print "297: instr", instr
@@ -432,15 +444,17 @@ def host_action(clock, end, cond, sock, vector, *args):
         actions = pickle.dumps(actions)
 
         try:
-            if sock:
-                sock.sendto(actions, multicast_group)
-                while True:
-                    data, _ = sock.recvfrom()
-                    instr = pickle.loads(data)
-                    if "ack" in instr.keys():
-                        break
+            if frame:
+                frame.sendto(actions, (remote_host, remote_port))
+                time.sleep(0.01)
+                data, _ = frame.recvfrom(512)
+                instr = pickle.loads(data)
+                print "440: ", instr
+                if "ack" in instr.keys():
+                    print "441: ", instr
                 
-        except Exception:
+        except Exception as e:
+            #print "445: ", e
             pass
 
 
