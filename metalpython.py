@@ -38,6 +38,8 @@ remote_port = options.p
 host_addr = ("", remote_port)
 frame = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 frame.bind(host_addr)
+ack = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+ack.bind(("", remote_port+1))
 
 # multicast
 multicast = "224.3.29.71"
@@ -314,8 +316,8 @@ def handle_instr(sock, end, cond, msg_que, vector, *args):
                     #print "293: In"
                     data = {"player": player_name, "ack": "OK"}
                     print "remote_host:", remote_host, "remote_port:", remote_port
-                    frame.sendto(pickle.dumps(data),
-                                (remote_host, remote_port))
+                    ack.sendto(pickle.dumps(data),
+                                (remote_host, remote_port+1))
                     for p in partnerGrp:
                             #print instr
                             #print "297: instr", instr
@@ -447,8 +449,8 @@ def host_action(clock, end, cond, sock, vector, *args):
         try:
             if frame:
                 frame.sendto(actions, (remote_host, remote_port))
-                time.sleep(0.01)
-                data, _ = frame.recvfrom(512)
+                #time.sleep(0.01)
+                data, _ = ack.recvfrom(512)
                 instr = pickle.loads(data)
                 print "440: ", instr
                 if "ack" in instr.keys():
