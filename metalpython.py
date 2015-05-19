@@ -29,11 +29,11 @@ pygame.display.set_caption("Metal Python")
 # parse argument
 parser = optparse.OptionParser()
 parser.add_option("-n", action="store", default="master")
-parser.add_option("-h", action="store", default="localhost")
+parser.add_option("-r", action="store", default="localhost")
 parser.add_option("-p", action="store", type="int", default=5678)
 options, args = parser.parse_args()
 player_name = options.n
-remote_host = options.h
+remote_host = options.r
 remote_port = options.p
 host_addr = ("", remote_port)
 frame = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -299,7 +299,7 @@ def handle_instr(sock, end, cond, msg_que, vector, *args):
                 partner = instr['player']
                 players_amount = len(vectorJ.keys()) -1
                 count = 0
-                print "291: instr", instr
+                print "302: instr", instr
 
                 # casual ordering check
                 for key in vectorJ:
@@ -313,6 +313,7 @@ def handle_instr(sock, end, cond, msg_que, vector, *args):
                         count == players_amount):
                     #print "293: In"
                     data = {"player": player_name, "ack": "OK"}
+                    print "remote_host:", remote_host, "remote_port:", remote_port
                     frame.sendto(pickle.dumps(data),
                                 (remote_host, remote_port))
                     for p in partnerGrp:
